@@ -144,10 +144,6 @@ body {
     height: 20px;
 }
 
-#anonymousSignInBtn:hover {
-    background: #3a5cd9;
-}
-
 #authError {
     color: #ef4444;
     font-size: 13px;
@@ -792,7 +788,49 @@ body {
     color: #ef4444;
 }
 
-/* Copy Budget Modal */
+/* Copy Budget Modal - Month Picker */
+.month-picker-container {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 12px;
+    flex-wrap: wrap;
+}
+
+.month-picker-container .picker-group {
+    flex: 1;
+    min-width: 150px;
+}
+
+.month-picker-container .picker-group label {
+    font-size: 13px;
+    font-weight: 500;
+    color: #374151;
+    display: block;
+    margin-bottom: 4px;
+}
+
+.month-picker-container .picker-group select {
+    width: 100%;
+    padding: 8px 12px;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    font-size: 14px;
+    background: white;
+}
+
+.month-picker-container .picker-group select:focus {
+    outline: none;
+    border-color: #4a6cf7;
+    box-shadow: 0 0 0 3px rgba(74, 108, 247, 0.1);
+}
+
+.month-picker-actions {
+    display: flex;
+    align-items: flex-end;
+    gap: 6px;
+}
+
+/* Month Option in Copy Modal */
 .month-option {
     display: flex;
     justify-content: space-between;
@@ -801,7 +839,6 @@ body {
     background: #f8f9fa;
     border-radius: 8px;
     border: 1px solid #e5e7eb;
-    margin-bottom: 8px;
     transition: all 0.2s;
 }
 
@@ -832,6 +869,38 @@ body {
 
 .month-option .copy-btn:hover {
     background: #3a5cd9;
+}
+
+/* Pagination */
+.copy-pagination {
+    display: flex;
+    justify-content: center;
+    gap: 8px;
+    margin-top: 12px;
+}
+
+.copy-pagination .page-btn {
+    padding: 4px 12px;
+    font-size: 12px;
+    min-width: 32px;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.copy-pagination .page-btn.active {
+    background: #4a6cf7;
+    color: white;
+}
+
+.copy-pagination .page-btn.inactive {
+    background: #e0e3e8;
+    color: #1a1a2e;
+}
+
+.copy-pagination .page-btn.inactive:hover {
+    background: #d0d3d8;
 }
 
 /* Empty State */
@@ -1058,6 +1127,19 @@ body {
     .month-option {
         flex-wrap: wrap;
         gap: 8px;
+    }
+
+    .month-picker-container {
+        flex-direction: column;
+    }
+
+    .month-picker-container .picker-group {
+        min-width: 100%;
+    }
+
+    .month-picker-actions {
+        width: 100%;
+        justify-content: flex-end;
     }
 }
 
