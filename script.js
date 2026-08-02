@@ -1,7 +1,7 @@
 // ============ FIREBASE CONFIGURATION ============
 // Replace this with your Firebase config from the Firebase console
 const firebaseConfig = {
-  apiKey: "AIzaSyBZo_FFdU2CSumLqgNI8NVaFDTVasviLiw",
+    apiKey: "AIzaSyBZo_FFdU2CSumLqgNI8NVaFDTVasviLiw",
   authDomain: "budgeting-app-729c4.firebaseapp.com",
   projectId: "budgeting-app-729c4",
   storageBucket: "budgeting-app-729c4.firebasestorage.app",
@@ -15,14 +15,8 @@ firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 const auth = firebase.auth();
 
-// Disable offline persistence - we want fresh data every time
-db.disableNetwork().then(() => {
-    db.enableNetwork();
-});
-
 // ============ STATE ============
 let state = {
-    categories: [],
     months: {}
 };
 
@@ -124,10 +118,19 @@ function signInWithGoogle() {
         });
 }
 
+function signInAnonymously() {
+    auth.signInAnonymously()
+        .catch((error) => {
+            const errorEl = document.getElementById('authError');
+            errorEl.textContent = 'Sign in failed: ' + error.message;
+            errorEl.style.display = 'block';
+        });
+}
+
 function signOut() {
     auth.signOut().then(() => {
         currentUser = null;
-        state = { categories: [], months: {} };
+        state = { months: {} };
         document.getElementById('appContainer').style.display = 'none';
         document.getElementById('loginScreen').style.display = 'flex';
         showNotification('Signed out successfully', 'info');
@@ -159,7 +162,6 @@ async function loadUserData(userId) {
             }
         } else {
             initializeEmptyState();
-            // Save empty state to Firebase
             await saveToFirebase(userId);
         }
         
@@ -169,7 +171,7 @@ async function loadUserData(userId) {
         
     } catch (error) {
         console.error('Load error:', error);
-        statusEl.textContent = '❌ Failed to load data';
+        statusEl.textContent = '❌ Failed to load data: ' + error.message;
         progressBar.style.background = '#ef4444';
         throw error;
     }
@@ -178,25 +180,19 @@ async function loadUserData(userId) {
 function ensureStateStructure() {
     if (!state.months) state.months = {};
     for (const key in state.months) {
-        if (!state.months[key].recordDate) {
+        const month = state.months[key];
+        if (!month.recordDate) {
             const date = new Date(key + '-01');
-            state.months[key].recordDate = date.toISOString().split('T')[0];
+            month.recordDate = date.toISOString().split('T')[0];
         }
-        if (!state.months[key].note) {
-            state.months[key].note = '';
-        }
-        if (!state.months[key].budgets) {
-            state.months[key].budgets = {};
-        }
-        if (!state.months[key].expenses) {
-            state.months[key].expenses = [];
-        }
+        if (!month.note) month.note = '';
+        if (!month.budgets) month.budgets = {};
+        if (!month.expenses) month.expenses = [];
+        if (!month.categories) month.categories = [];
     }
-    if (!state.categories) state.categories = [];
 }
 
 function initializeEmptyState() {
-    state.categories = ['Groceries', 'Rent', 'Utilities', 'Transportation', 'Dining', 'Shopping', 'Entertainment', 'Healthcare', 'Insurance', 'Other'];
     state.months = {};
     const key = MONTH_KEY();
     const date = new Date();
@@ -206,7 +202,8 @@ function initializeEmptyState() {
         recordDate: date.toISOString().split('T')[0],
         note: '',
         budgets: {},
-        expenses: []
+        expenses: [],
+        categories: ['Groceries', 'Rent', 'Utilities', 'Transportation', 'Dining', 'Shopping', 'Entertainment', 'Healthcare', 'Insurance', 'Other']
     };
 }
 
@@ -265,7 +262,6 @@ function showApp() {
     
     renderMonth();
     renderAll();
-    populateCategorySelect();
     populateBudgetInputs();
     
     const statusEl = document.getElementById('syncStatus');
@@ -292,6 +288,12 @@ function getMonthKey(date) {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 }
 
+function getMonthCategories(monthKey) {
+    const key = monthKey || MONTH_KEY();
+    const data = getMonthData(key);
+    return data.categories || [];
+}
+
 function getMonthData(monthKey) {
     const key = monthKey || MONTH_KEY();
     if (!state.months[key]) {
@@ -302,7 +304,8 @@ function getMonthData(monthKey) {
             recordDate: date.toISOString().split('T')[0],
             note: '',
             budgets: {},
-            expenses: []
+            expenses: [],
+            categories: []
         };
         saveData();
     }
@@ -313,6 +316,30 @@ function getPreviousMonthKey() {
     const d = new Date(currentMonth);
     d.setMonth(d.getMonth() - 1);
     return getMonthKey(d);
+}
+
+function getAvailablePastMonths() {
+    const currentKey = MONTH_KEY();
+    const available = [];
+    
+    for (const key in state.months) {
+        if (key < currentKey) {
+            const monthData = state.months[key];
+            const hasBudgets = monthData.budgets && Object.keys(monthData.budgets).length > 0;
+            const hasCategories = monthData.categories && monthData.categories.length > 0;
+            if (hasBudgets || hasCategories) {
+                available.push({
+                    key: key,
+                    budgetCount: Object.keys(monthData.budgets || {}).length,
+                    categoryCount: (monthData.categories || []).length
+                });
+            }
+        }
+    }
+    
+    // Sort by date descending (newest first)
+    available.sort((a, b) => b.key.localeCompare(a.key));
+    return available;
 }
 
 // ============ MONTH NAVIGATION ============
@@ -346,6 +373,9 @@ function renderAll() {
     renderCategoryChart();
     renderRecentExpenses();
     renderExpenses();
+    renderCategoryList();
+    populateCategorySelect();
+    populateBudgetInputs();
 }
 
 // ============ SNAPSHOT ============
@@ -485,15 +515,17 @@ function saveSnapshot() {
     showNotification('✅ Snapshot saved!', 'success');
 }
 
-// ============ CATEGORY MANAGEMENT ============
+// ============ CATEGORY MANAGEMENT (Month Specific) ============
 function renderCategoryList() {
     const container = document.getElementById('categoryList');
-    if (state.categories.length === 0) {
-        container.innerHTML = '<p style="color:#6b7280;font-size:13px;">No categories yet. Add one above!</p>';
+    const categories = getMonthCategories();
+    
+    if (categories.length === 0) {
+        container.innerHTML = '<p style="color:#6b7280;font-size:13px;">No categories for this month. Add one above!</p>';
         return;
     }
 
-    container.innerHTML = state.categories.map(cat => `
+    container.innerHTML = categories.map(cat => `
         <span class="category-tag">
             ${cat}
             <button class="cat-delete" onclick="deleteCategory('${cat}')" title="Delete category">✕</button>
@@ -510,63 +542,44 @@ function addCategory() {
         return;
     }
     
-    if (state.categories.includes(name)) {
-        showNotification('Category already exists!', 'warning');
+    const data = getMonthData();
+    if (data.categories.includes(name)) {
+        showNotification('Category already exists for this month!', 'warning');
         return;
     }
 
-    state.categories.push(name);
-    state.categories.sort();
+    data.categories.push(name);
+    data.categories.sort();
     saveData();
     
+    // Refresh everything immediately so category appears in budget inputs
     renderCategoryList();
     populateBudgetInputs();
-    renderAll();
     populateCategorySelect();
+    renderAll();
     
     input.value = '';
-    showNotification('✅ Category added!', 'success');
+    showNotification('✅ Category added! You can now set its budget below.', 'success');
 }
 
 function deleteCategory(category) {
-    let inUse = false;
-    let usageMessage = '';
+    const data = getMonthData();
     
-    for (const key in state.months) {
-        const month = state.months[key];
-        const expenses = month.expenses.filter(e => e.category === category);
-        if (expenses.length > 0) {
-            inUse = true;
-            usageMessage += `\n- ${key}: ${expenses.length} expense(s)`;
-        }
-        if (month.budgets && month.budgets[category] !== undefined) {
-            inUse = true;
-            if (!usageMessage.includes('budget')) {
-                usageMessage += `\n- Has budget set in multiple months`;
-            }
-        }
-    }
-
-    if (inUse) {
-        if (!confirm(`Category "${category}" is in use:${usageMessage}\n\nDelete anyway? This will remove it from all months.`)) {
+    const expenses = data.expenses.filter(e => e.category === category);
+    if (expenses.length > 0) {
+        if (!confirm(`Category "${category}" has ${expenses.length} expense(s). Delete anyway?`)) {
             return;
         }
-        
-        for (const key in state.months) {
-            const month = state.months[key];
-            month.expenses = month.expenses.filter(e => e.category !== category);
-            if (month.budgets) delete month.budgets[category];
-        }
+        data.expenses = data.expenses.filter(e => e.category !== category);
     }
-
-    state.categories = state.categories.filter(c => c !== category);
+    
+    if (data.budgets && data.budgets[category] !== undefined) {
+        delete data.budgets[category];
+    }
+    
+    data.categories = data.categories.filter(c => c !== category);
     saveData();
-    
-    renderCategoryList();
-    populateBudgetInputs();
     renderAll();
-    populateCategorySelect();
-    
     showNotification('🗑️ Category deleted', 'info');
 }
 
@@ -581,17 +594,18 @@ function populateBudgetInputs() {
     const container = document.getElementById('budgetInputs');
     const data = getMonthData();
     const budgets = data.budgets || {};
+    const categories = data.categories || [];
 
-    if (state.categories.length === 0) {
+    if (categories.length === 0) {
         container.innerHTML = `
             <div class="empty-state" style="padding:12px;">
-                <p style="font-size:13px;">No categories yet. Add one above!</p>
+                <p style="font-size:13px;">No categories for this month. Add one above!</p>
             </div>
         `;
         return;
     }
 
-    container.innerHTML = state.categories.map(cat => `
+    container.innerHTML = categories.map(cat => `
         <div class="form-group">
             <label>${cat}</label>
             <input type="number" id="budget_${cat}" step="0.01" min="0"
@@ -606,7 +620,8 @@ function saveBudgets(e) {
     const data = getMonthData();
     if (!data.budgets) data.budgets = {};
 
-    state.categories.forEach(cat => {
+    const categories = data.categories || [];
+    categories.forEach(cat => {
         const input = document.getElementById(`budget_${cat}`);
         if (input && input.value && parseFloat(input.value) > 0) {
             data.budgets[cat] = parseFloat(input.value) || 0;
@@ -621,42 +636,79 @@ function saveBudgets(e) {
     showNotification('✅ Budgets saved successfully!', 'success');
 }
 
-// ============ COPY BUDGET FROM PREVIOUS MONTH ============
-function copyPreviousMonthBudget() {
-    const currentKey = MONTH_KEY();
-    const currentDate = new Date(currentKey + '-01');
+// ============ COPY BUDGET FROM ANY PAST MONTH ============
+function showCopyBudgetModal() {
+    const availableMonths = getAvailablePastMonths();
     
-    let previousKey = null;
-    let previousDate = new Date(currentDate);
-    previousDate.setMonth(previousDate.getMonth() - 1);
-    
-    for (let i = 0; i < 12; i++) {
-        const testKey = getMonthKey(previousDate);
-        if (state.months[testKey] && state.months[testKey].budgets && 
-            Object.keys(state.months[testKey].budgets).length > 0) {
-            previousKey = testKey;
-            break;
-        }
-        previousDate.setMonth(previousDate.getMonth() - 1);
-    }
-    
-    if (!previousKey) {
-        showNotification('No previous months with budgets found.', 'warning');
+    if (availableMonths.length === 0) {
+        showNotification('No past months with budgets or categories found.', 'warning');
         return;
     }
     
-    const sourceData = state.months[previousKey];
+    const container = document.getElementById('availableMonths');
+    container.innerHTML = availableMonths.map(({ key, budgetCount, categoryCount }) => {
+        const date = new Date(key + '-01');
+        const monthName = date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+        return `
+            <div class="month-option" style="display:flex;justify-content:space-between;align-items:center;padding:12px 16px;background:#f8f9fa;border-radius:8px;border:1px solid #e5e7eb;margin-bottom:8px;">
+                <div>
+                    <div style="font-weight:500;">${monthName}</div>
+                    <div style="font-size:13px;color:#6b7280;">${budgetCount} budget(s) · ${categoryCount} category(ies)</div>
+                </div>
+                <button class="copy-btn" onclick="copyBudgetFromMonth('${key}')" style="background:#4a6cf7;color:white;border:none;padding:6px 16px;border-radius:6px;font-size:13px;cursor:pointer;transition:background 0.2s;">
+                    📋 Copy
+                </button>
+            </div>
+        `;
+    }).join('');
+    
+    document.getElementById('copyBudgetModal').style.display = 'block';
+}
+
+function copyBudgetFromMonth(sourceMonthKey) {
+    const currentKey = MONTH_KEY();
+    const sourceData = state.months[sourceMonthKey];
     const currentData = getMonthData(currentKey);
     
-    const budgetCount = Object.keys(sourceData.budgets).length;
-    if (!confirm(`Copy ${budgetCount} budget(s) from ${formatMonthKey(previousKey)} to ${formatMonthKey(currentKey)}?`)) return;
+    if (!sourceData) {
+        showNotification('Source month not found!', 'error');
+        return;
+    }
     
-    currentData.budgets = { ...sourceData.budgets };
+    const budgetCount = Object.keys(sourceData.budgets || {}).length;
+    const categoryCount = (sourceData.categories || []).length;
+    
+    if (budgetCount === 0 && categoryCount === 0) {
+        showNotification('No budgets or categories found in source month.', 'warning');
+        return;
+    }
+    
+    if (!confirm(`Copy ${budgetCount} budget(s) and ${categoryCount} category(ies) from ${formatMonthKey(sourceMonthKey)} to ${formatMonthKey(currentKey)}?`)) return;
+    
+    // Copy categories (merge with existing)
+    if (sourceData.categories && sourceData.categories.length > 0) {
+        sourceData.categories.forEach(cat => {
+            if (!currentData.categories.includes(cat)) {
+                currentData.categories.push(cat);
+            }
+        });
+        currentData.categories.sort();
+    }
+    
+    // Copy budgets
+    if (sourceData.budgets) {
+        Object.keys(sourceData.budgets).forEach(cat => {
+            // Only copy budget if category exists in current month
+            if (currentData.categories.includes(cat)) {
+                currentData.budgets[cat] = sourceData.budgets[cat];
+            }
+        });
+    }
     
     saveData();
     renderAll();
-    closeModal('budgetModal');
-    showNotification(`✅ ${budgetCount} budget(s) copied from ${formatMonthKey(previousKey)}!`, 'success');
+    closeModal('copyBudgetModal');
+    showNotification(`✅ Copied from ${formatMonthKey(sourceMonthKey)}!`, 'success');
 }
 
 function formatMonthKey(monthKey) {
@@ -669,29 +721,30 @@ function formatMonthKey(monthKey) {
 function populateCategorySelect() {
     const select = document.getElementById('expenseCategory');
     const currentValue = select.value;
+    const categories = getMonthCategories();
 
     select.innerHTML = '<option value="">Select a category...</option>';
-    state.categories.forEach(cat => {
+    categories.forEach(cat => {
         const opt = document.createElement('option');
         opt.value = cat;
         opt.textContent = cat;
         select.appendChild(opt);
     });
 
-    if (currentValue && state.categories.includes(currentValue)) {
+    if (currentValue && categories.includes(currentValue)) {
         select.value = currentValue;
     }
 
     const filter = document.getElementById('categoryFilter');
     const filterValue = filter.value;
     filter.innerHTML = '<option value="all">All Categories</option>';
-    state.categories.forEach(cat => {
+    categories.forEach(cat => {
         const opt = document.createElement('option');
         opt.value = cat;
         opt.textContent = cat;
         filter.appendChild(opt);
     });
-    if (filterValue && state.categories.includes(filterValue)) {
+    if (filterValue && categories.includes(filterValue)) {
         filter.value = filterValue;
     } else {
         filter.value = 'all';
@@ -704,8 +757,9 @@ function generateExpenseId() {
 }
 
 function showAddExpense() {
-    if (state.categories.length === 0) {
-        showNotification('Please create at least one category first!', 'warning');
+    const categories = getMonthCategories();
+    if (categories.length === 0) {
+        showNotification('Please create at least one category for this month first!', 'warning');
         showBudgetSetup();
         return;
     }
@@ -1003,7 +1057,6 @@ function renderBudgetOverview() {
         const spentAmount = spent[cat] || 0;
         
         const threshold = limit * 1.01;
-        const pct = limit > 0 ? Math.min((spentAmount / limit) * 100, 100) : 0;
         
         let status = 'none';
         let badgeText = 'No budget';
@@ -1123,9 +1176,8 @@ document.addEventListener('keydown', (e) => {
 
 // ============ INIT ============
 document.addEventListener('DOMContentLoaded', () => {
-    // Setup Google Sign In button
     document.getElementById('googleSignInBtn').addEventListener('click', signInWithGoogle);
+    document.getElementById('anonymousSignInBtn').addEventListener('click', signInAnonymously);
     
-    // Initialize authentication
     initAuth();
 });
