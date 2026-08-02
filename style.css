@@ -406,19 +406,25 @@ body {
 }
 
 .btn-danger {
-    background: #ef4444;
-    color: white;
+    background: #e0e3e8;
+    color: #1a1a2e;
     border: none;
     padding: 10px 20px;
     border-radius: 8px;
     font-size: 14px;
     font-weight: 600;
     cursor: pointer;
-    transition: background 0.2s;
+    transition: all 0.2s;
 }
 
 .btn-danger:hover {
-    background: #dc2626;
+    background: #fee2e2;
+    color: #991b1b;
+}
+
+.btn-danger.small {
+    padding: 6px 14px;
+    font-size: 13px;
 }
 
 /* Calculator Input */
