@@ -1,7 +1,7 @@
 // ============ FIREBASE CONFIGURATION ============
 // Replace this with your Firebase config from the Firebase console
 const firebaseConfig = {
-    apiKey: "AIzaSyBZo_FFdU2CSumLqgNI8NVaFDTVasviLiw",
+ apiKey: "AIzaSyBZo_FFdU2CSumLqgNI8NVaFDTVasviLiw",
   authDomain: "budgeting-app-729c4.firebaseapp.com",
   projectId: "budgeting-app-729c4",
   storageBucket: "budgeting-app-729c4.firebasestorage.app",
@@ -25,6 +25,11 @@ const MONTH_KEY = () => getMonthKey(currentMonth);
 let isSyncing = false;
 let isLoaded = false;
 let currentUser = null;
+
+// Copy Budget Pagination
+let copyBudgetCurrentPage = 0;
+const COPY_BUDGET_MONTHS_PER_PAGE = 3;
+let copyBudgetAllMonths = [];
 
 // ============ CALCULATOR HELPERS ============
 function evaluateExpression(expr) {
@@ -111,15 +116,6 @@ function initAuth() {
 function signInWithGoogle() {
     const provider = new firebase.auth.GoogleAuthProvider();
     auth.signInWithPopup(provider)
-        .catch((error) => {
-            const errorEl = document.getElementById('authError');
-            errorEl.textContent = 'Sign in failed: ' + error.message;
-            errorEl.style.display = 'block';
-        });
-}
-
-function signInAnonymously() {
-    auth.signInAnonymously()
         .catch((error) => {
             const errorEl = document.getElementById('authError');
             errorEl.textContent = 'Sign in failed: ' + error.message;
@@ -337,7 +333,6 @@ function getAvailablePastMonths() {
         }
     }
     
-    // Sort by date descending (newest first)
     available.sort((a, b) => b.key.localeCompare(a.key));
     return available;
 }
@@ -363,6 +358,8 @@ function renderMonth() {
     document.getElementById('snapshotMonth').textContent =
         currentMonth.toLocaleDateString('en-US', options);
     document.getElementById('budgetMonth').textContent =
+        currentMonth.toLocaleDateString('en-US', options);
+    document.getElementById('copyTargetMonth').textContent =
         currentMonth.toLocaleDateString('en-US', options);
 }
 
@@ -552,7 +549,6 @@ function addCategory() {
     data.categories.sort();
     saveData();
     
-    // Refresh everything immediately so category appears in budget inputs
     renderCategoryList();
     populateBudgetInputs();
     populateCategorySelect();
@@ -636,33 +632,154 @@ function saveBudgets(e) {
     showNotification('✅ Budgets saved successfully!', 'success');
 }
 
-// ============ COPY BUDGET FROM ANY PAST MONTH ============
+// ============ COPY BUDGET FROM ANY PAST MONTH (UPDATED) ============
 function showCopyBudgetModal() {
-    const availableMonths = getAvailablePastMonths();
+    copyBudgetCurrentPage = 0;
+    copyBudgetAllMonths = getAvailablePastMonths();
     
-    if (availableMonths.length === 0) {
-        showNotification('No past months with budgets or categories found.', 'warning');
+    const container = document.getElementById('availableMonths');
+    
+    // Build the month picker HTML
+    const monthPickerHtml = `
+        <div class="month-picker-container">
+            <div class="picker-group">
+                <label>Month</label>
+                <select id="copyMonthPicker">
+                    ${Array.from({length: 12}, (_, i) => {
+                        const month = i + 1;
+                        const monthName = new Date(2000, i, 1).toLocaleString('default', { month: 'long' });
+                        const val = String(month).padStart(2, '0');
+                        return `<option value="${val}">${monthName}</option>`;
+                    }).join('')}
+                </select>
+            </div>
+            <div class="picker-group">
+                <label>Year</label>
+                <select id="copyYearPicker">
+                    ${Array.from({length: 10}, (_, i) => {
+                        const year = new Date().getFullYear() - i;
+                        return `<option value="${year}">${year}</option>`;
+                    }).join('')}
+                </select>
+            </div>
+            <div class="month-picker-actions">
+                <button class="btn-primary small" onclick="loadSpecificMonth()" style="padding:8px 16px;font-size:13px;">Load</button>
+                <button class="btn-secondary small" onclick="resetCopyBudgetView()" style="padding:8px 16px;font-size:13px;">Recent</button>
+            </div>
+        </div>
+        <div id="copyBudgetList" style="display:flex;flex-direction:column;gap:8px;max-height:300px;overflow-y:auto;"></div>
+        <div id="copyBudgetPagination" class="copy-pagination"></div>
+        <div id="copyBudgetEmpty" style="display:none;text-align:center;padding:30px 20px;color:#6b7280;">
+            <div style="font-size:40px;margin-bottom:8px;">📭</div>
+            <p>No months found with budgets or categories.</p>
+        </div>
+    `;
+    
+    container.innerHTML = monthPickerHtml;
+    
+    // Set default month to current month
+    const now = new Date();
+    document.getElementById('copyMonthPicker').value = String(now.getMonth() + 1).padStart(2, '0');
+    document.getElementById('copyYearPicker').value = now.getFullYear();
+    
+    renderCopyBudgetPage();
+    document.getElementById('copyBudgetModal').style.display = 'block';
+}
+
+function renderCopyBudgetPage() {
+    const container = document.getElementById('copyBudgetList');
+    const pagination = document.getElementById('copyBudgetPagination');
+    const emptyEl = document.getElementById('copyBudgetEmpty');
+    
+    if (copyBudgetAllMonths.length === 0) {
+        container.innerHTML = '';
+        pagination.innerHTML = '';
+        emptyEl.style.display = 'block';
         return;
     }
     
-    const container = document.getElementById('availableMonths');
-    container.innerHTML = availableMonths.map(({ key, budgetCount, categoryCount }) => {
+    emptyEl.style.display = 'none';
+    
+    const start = copyBudgetCurrentPage * COPY_BUDGET_MONTHS_PER_PAGE;
+    const end = Math.min(start + COPY_BUDGET_MONTHS_PER_PAGE, copyBudgetAllMonths.length);
+    const pageMonths = copyBudgetAllMonths.slice(start, end);
+    const totalPages = Math.ceil(copyBudgetAllMonths.length / COPY_BUDGET_MONTHS_PER_PAGE);
+    
+    container.innerHTML = pageMonths.map(({ key, budgetCount, categoryCount }) => {
         const date = new Date(key + '-01');
         const monthName = date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
         return `
-            <div class="month-option" style="display:flex;justify-content:space-between;align-items:center;padding:12px 16px;background:#f8f9fa;border-radius:8px;border:1px solid #e5e7eb;margin-bottom:8px;">
+            <div class="month-option">
                 <div>
-                    <div style="font-weight:500;">${monthName}</div>
-                    <div style="font-size:13px;color:#6b7280;">${budgetCount} budget(s) · ${categoryCount} category(ies)</div>
+                    <div class="month-name">${monthName}</div>
+                    <div class="month-details">${budgetCount} budget(s) · ${categoryCount} category(ies)</div>
                 </div>
-                <button class="copy-btn" onclick="copyBudgetFromMonth('${key}')" style="background:#4a6cf7;color:white;border:none;padding:6px 16px;border-radius:6px;font-size:13px;cursor:pointer;transition:background 0.2s;">
-                    📋 Copy
-                </button>
+                <button class="copy-btn" onclick="copyBudgetFromMonth('${key}')">📋 Copy</button>
             </div>
         `;
     }).join('');
     
-    document.getElementById('copyBudgetModal').style.display = 'block';
+    // Pagination
+    if (totalPages > 1) {
+        let paginationHtml = '';
+        for (let i = 0; i < totalPages; i++) {
+            paginationHtml += `
+                <button class="page-btn ${i === copyBudgetCurrentPage ? 'active' : 'inactive'}" 
+                        onclick="goToCopyBudgetPage(${i})">
+                    ${i + 1}
+                </button>
+            `;
+        }
+        pagination.innerHTML = paginationHtml;
+    } else {
+        pagination.innerHTML = '';
+    }
+}
+
+function goToCopyBudgetPage(page) {
+    copyBudgetCurrentPage = page;
+    renderCopyBudgetPage();
+}
+
+function loadSpecificMonth() {
+    const month = document.getElementById('copyMonthPicker').value;
+    const year = parseInt(document.getElementById('copyYearPicker').value);
+    const monthKey = `${year}-${month}`;
+    
+    // Check if this month exists in the list
+    const existing = copyBudgetAllMonths.find(m => m.key === monthKey);
+    
+    if (existing) {
+        // If it exists, find its index and go to that page
+        const index = copyBudgetAllMonths.indexOf(existing);
+        copyBudgetCurrentPage = Math.floor(index / COPY_BUDGET_MONTHS_PER_PAGE);
+        renderCopyBudgetPage();
+    } else {
+        // If it doesn't exist, check if we have data for this month
+        const monthData = state.months[monthKey];
+        if (monthData && (Object.keys(monthData.budgets || {}).length > 0 || (monthData.categories || []).length > 0)) {
+            // Add it to the list and go to it
+            const hasBudgets = monthData.budgets && Object.keys(monthData.budgets).length > 0;
+            const hasCategories = monthData.categories && monthData.categories.length > 0;
+            copyBudgetAllMonths.push({
+                key: monthKey,
+                budgetCount: Object.keys(monthData.budgets || {}).length,
+                categoryCount: (monthData.categories || []).length
+            });
+            copyBudgetAllMonths.sort((a, b) => b.key.localeCompare(a.key));
+            const index = copyBudgetAllMonths.findIndex(m => m.key === monthKey);
+            copyBudgetCurrentPage = Math.floor(index / COPY_BUDGET_MONTHS_PER_PAGE);
+            renderCopyBudgetPage();
+        } else {
+            showNotification('No budgets or categories found for this month.', 'warning');
+        }
+    }
+}
+
+function resetCopyBudgetView() {
+    copyBudgetAllMonths = getAvailablePastMonths();
+    copyBudgetCurrentPage = 0;
+    renderCopyBudgetPage();
 }
 
 function copyBudgetFromMonth(sourceMonthKey) {
@@ -698,7 +815,6 @@ function copyBudgetFromMonth(sourceMonthKey) {
     // Copy budgets
     if (sourceData.budgets) {
         Object.keys(sourceData.budgets).forEach(cat => {
-            // Only copy budget if category exists in current month
             if (currentData.categories.includes(cat)) {
                 currentData.budgets[cat] = sourceData.budgets[cat];
             }
@@ -1177,7 +1293,5 @@ document.addEventListener('keydown', (e) => {
 // ============ INIT ============
 document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('googleSignInBtn').addEventListener('click', signInWithGoogle);
-    document.getElementById('anonymousSignInBtn').addEventListener('click', signInAnonymously);
-    
     initAuth();
 });
