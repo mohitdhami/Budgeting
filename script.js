@@ -1143,78 +1143,6 @@ function renderCategoryChart() {
     }).join('');
 }
 
-// // ============ BUDGET OVERVIEW ============
-// function renderBudgetOverview() {
-//     const container = document.getElementById('budgetOverview');
-//     const data = getMonthData();
-//     const budgets = data.budgets || {};
-//     const expenses = getMonthExpenses();
-
-//     const cats = new Set([...Object.keys(budgets), ...expenses.map(e => e.category)]);
-
-//     if (cats.size === 0) {
-//         container.innerHTML = `
-//             <div class="empty-state">
-//                 <div class="emoji">🎯</div>
-//                 <p>Set budgets or add expenses to see tracking</p>
-//             </div>
-//         `;
-//         return;
-//     }
-
-//     const spent = {};
-//     expenses.forEach(e => {
-//         spent[e.category] = (spent[e.category] || 0) + e.amount;
-//     });
-
-//     let html = '';
-//     cats.forEach(cat => {
-//         const limit = budgets[cat] || 0;
-//         const spentAmount = spent[cat] || 0;
-        
-//         const threshold = limit * 1.01;
-        
-//         let status = 'none';
-//         let badgeText = 'No budget';
-//         let progressColor = '#10b981';
-        
-//         if (limit > 0) {
-//             if (spentAmount >= threshold) {
-//                 status = 'danger';
-//                 badgeText = '⚠️ Over Budget';
-//                 progressColor = '#ef4444';
-//             } else if (spentAmount >= limit) {
-//                 status = 'warning';
-//                 badgeText = '⚠️ Near Limit';
-//                 progressColor = '#f59e0b';
-//             } else if (spentAmount >= limit * 0.8) {
-//                 status = 'warning';
-//                 badgeText = '⚠️ Near Limit';
-//                 progressColor = '#f59e0b';
-//             } else {
-//                 status = 'ok';
-//                 badgeText = '✅ On track';
-//                 progressColor = '#10b981';
-//             }
-//         }
-
-//         const displayPct = limit > 0 ? Math.min((spentAmount / limit) * 100, 100) : 0;
-
-//         html += `
-//             <div class="budget-item">
-//                 <span class="cat-name">${cat}</span>
-//                 <div class="progress-track">
-//                     <div class="progress-fill" style="width:${displayPct}%;background:${progressColor}"></div>
-//                 </div>
-//                 <span class="budget-text">${formatCurrency(spentAmount)} / ${formatCurrency(limit)}</span>
-//                 <span class="status-badge ${status}">${badgeText}</span>
-//             </div>
-//         `;
-//     });
-
-//     container.innerHTML = html;
-// }
-
 // ============ BUDGET OVERVIEW ============
 function renderBudgetOverview() {
     const container = document.getElementById('budgetOverview');
@@ -1267,6 +1195,7 @@ function renderBudgetOverview() {
             </div>
         </div>
         <div class="budget-divider"></div>
+        <br>
     `;
 
     cats.forEach(cat => {
