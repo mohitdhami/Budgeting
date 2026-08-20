@@ -535,6 +535,58 @@ body {
     color: #6b7280;
 }
 
+.total-summary {
+    display: flex;
+    justify-content: space-around;
+    padding: 15px;
+    background: #f8fafc;
+    border-radius: 8px;
+    margin-bottom: 15px;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.summary-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.summary-label {
+    font-size: 12px;
+    color: #64748b;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.summary-amount {
+    font-size: 20px;
+    font-weight: 700;
+    margin-top: 4px;
+}
+
+.total-expenses {
+    color: #ef4444;
+}
+
+.total-budget {
+    color: #3b82f6;
+}
+
+.summary-amount.positive {
+    color: #10b981;
+}
+
+.summary-amount.negative {
+    color: #ef4444;
+}
+
+.budget-divider {
+    border-top: 1px solid #e2e8f0;
+    margin: 10px 0 15px 0;
+}
+
 /* Charts Section */
 .charts-section {
     display: grid;
