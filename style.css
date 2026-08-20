@@ -538,6 +538,7 @@ body {
 .total-summary {
     display: flex;
     justify-content: space-around;
+    width: 100%;
     padding: 15px;
     background: #f8fafc;
     border-radius: 8px;
@@ -580,11 +581,6 @@ body {
 
 .summary-amount.negative {
     color: #ef4444;
-}
-
-.budget-divider {
-    border-top: 1px solid #e2e8f0;
-    margin: 10px 0 15px 0;
 }
 
 /* Charts Section */
